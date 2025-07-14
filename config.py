@@ -77,7 +77,26 @@ DISABLE_CHANNEL_BUTTON = os.environ.get("DISABLE_CHANNEL_BUTTON", None) == 'True
 #--------------------------------------------
 BOT_STATS_TEXT = "<b>BOT UPTIME</b>\n{uptime}"
 USER_REPLY_TEXT = "ʙᴀᴋᴋᴀ ! ʏᴏᴜ ᴀʀᴇ ɴᴏᴛ ᴍʏ ꜱᴇɴᴘᴀɪ!!"
+#==========================(BUY PREMIUM)====================#
+
+OWNER_TAG = os.environ.get("OWNER_TAG", "rohit_1888")
+UPI_ID = os.environ.get("UPI_ID", "rohit23pnb@axl")
+QR_PIC = os.environ.get("QR_PIC", "https://telegra.ph/file/3e83c69804826b3cba066-16cffa90cd682570da.jpg")
+SCREENSHOT_URL = os.environ.get("SCREENSHOT_URL", f"t.me/rohit_1888")
 #--------------------------------------------
+#Time and its price
+#7 Days
+PRICE1 = os.environ.get("PRICE1", "0 rs")
+#1 Month
+PRICE2 = os.environ.get("PRICE2", "60 rs")
+#3 Month
+PRICE3 = os.environ.get("PRICE3", "150 rs")
+#6 Month
+PRICE4 = os.environ.get("PRICE4", "280 rs")
+#1 Year
+PRICE5 = os.environ.get("PRICE5", "550 rs")
+
+#===================(END)========================#
 
 
 LOG_FILE_NAME = "filesharingbot.txt"
