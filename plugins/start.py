@@ -14,6 +14,9 @@ import asyncio
 import os
 import random
 import sys
+import re
+import string 
+import string as rohit
 import time
 from datetime import datetime, timedelta
 from pyrogram import Client, filters, __version__
@@ -25,12 +28,18 @@ from bot import Bot
 from config import *
 from helper_func import *
 from database.database import *
+from database.db_premium import *
+
 
 BAN_SUPPORT = f"{BAN_SUPPORT}"
+TUT_VID = f"{TUT_VID}"
 
 @Bot.on_message(filters.command('start') & filters.private)
 async def start_command(client: Client, message: Message):
     user_id = message.from_user.id
+    id = message.from_user.id
+    is_premium = await is_premium_user(id)
+
 
     # Check if user is banned
     banned_users = await db.get_ban_users()
@@ -43,6 +52,7 @@ async def start_command(client: Client, message: Message):
             )
         )
 
+
     # Check if user is an admin and treat them as verified
     if user_id in await db.get_all_admins():
         verify_status = {
@@ -54,8 +64,8 @@ async def start_command(client: Client, message: Message):
     else:
         verify_status = await db.get_verify_status(id)
 
-      # If TOKEN is enabled, handle verification logic
-    if SHORTLINK_URL or SHORTLINK_API:
+        # If TOKEN is enabled, handle verification logic
+        if SHORTLINK_URL or SHORTLINK_API:
             if verify_status['is_verified'] and VERIFY_EXPIRE < (time.time() - verify_status['verified_time']):
                 await db.update_verify_status(user_id, is_verified=False)
 
@@ -144,35 +154,26 @@ async def start_command(client: Client, message: Message):
             return
         finally:
             await temp_msg.delete()
- 
-        codeflix_msgs = []
 
+        codeflix_msgs = []
         for msg in messages:
-            original_caption = msg.caption.html if msg.caption else ""
-            caption = f"{original_caption}\n\n{CUSTOM_CAPTION}" if CUSTOM_CAPTION else original_caption
+            caption = (CUSTOM_CAPTION.format(previouscaption="" if not msg.caption else msg.caption.html, 
+                                             filename=msg.document.file_name) if bool(CUSTOM_CAPTION) and bool(msg.document)
+                       else ("" if not msg.caption else msg.caption.html))
+
             reply_markup = msg.reply_markup if DISABLE_CHANNEL_BUTTON else None
 
             try:
-                snt_msg = await msg.copy(
-                    chat_id=message.from_user.id,
-                    caption=caption,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=reply_markup,
-                    protect_content=PROTECT_CONTENT
-                )
-                await asyncio.sleep(0.5)
-                codeflix_msgs.append(snt_msg)
+                copied_msg = await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML, 
+                                            reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
+                codeflix_msgs.append(copied_msg)
             except FloodWait as e:
                 await asyncio.sleep(e.x)
-                copied_msg = await msg.copy(
-                    chat_id=message.from_user.id,
-                    caption=caption,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=reply_markup,
-                    protect_content=PROTECT_CONTENT
-                )
+                copied_msg = await msg.copy(chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML, 
+                                            reply_markup=reply_markup, protect_content=PROTECT_CONTENT)
                 codeflix_msgs.append(copied_msg)
-            except:
+            except Exception as e:
+                print(f"Failed to send message: {e}")
                 pass
 
         if FILE_AUTO_DELETE > 0:
@@ -243,7 +244,7 @@ async def start_command(client: Client, message: Message):
 chat_data_cache = {}
 
 async def not_joined(client: Client, message: Message):
-    temp = await message.reply("<b><i>ᴡᴀɪᴛ ᴀ sᴇᴄ..</i></b>")
+    temp = await message.reply("<b><i>Checking Subscription...</i></b>")
 
     user_id = message.from_user.id
     buttons = []
@@ -325,6 +326,153 @@ async def not_joined(client: Client, message: Message):
             f"<b><i>! Eʀʀᴏʀ, Cᴏɴᴛᴀᴄᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ᴛᴏ sᴏʟᴠᴇ ᴛʜᴇ ɪssᴜᴇs @rohit_1888</i></b>\n"
             f"<blockquote expandable><b>Rᴇᴀsᴏɴ:</b> {e}</blockquote>"
         )
+
+#=====================================================================================##
+
+@Bot.on_message(filters.command('myplan') & filters.private)
+async def check_plan(client: Client, message: Message):
+    user_id = message.from_user.id  # Get user ID from the message
+
+    # Get the premium status of the user
+    status_message = await check_user_plan(user_id)
+
+    # Send the response message to the user
+    await message.reply(status_message)
+
+#=====================================================================================##
+# Command to add premium user
+@Bot.on_message(filters.command('addpremium') & filters.private & admin)
+async def add_premium_user_command(client, msg):
+    if len(msg.command) != 4:
+        await msg.reply_text(
+            "Usage: /addpremium <user_id> <time_value> <time_unit>\n\n"
+            "Time Units:\n"
+            "s - seconds\n"
+            "m - minutes\n"
+            "h - hours\n"
+            "d - days\n"
+            "y - years\n\n"
+            "Examples:\n"
+            "/addpremium 123456789 30 m → 30 minutes\n"
+            "/addpremium 123456789 2 h → 2 hours\n"
+            "/addpremium 123456789 1 d → 1 day\n"
+            "/addpremium 123456789 1 y → 1 year"
+        )
+        return
+
+    try:
+        user_id = int(msg.command[1])
+        time_value = int(msg.command[2])
+        time_unit = msg.command[3].lower()  # supports: s, m, h, d, y
+
+        # Call add_premium function
+        expiration_time = await add_premium(user_id, time_value, time_unit)
+
+        # Notify the admin
+        await msg.reply_text(
+            f"✅ User `{user_id}` added as a premium user for {time_value} {time_unit}.\n"
+            f"Expiration Time: `{expiration_time}`"
+        )
+
+        # Notify the user
+        await client.send_message(
+            chat_id=user_id,
+            text=(
+                f"🎉 Premium Activated!\n\n"
+                f"You have received premium access for `{time_value} {time_unit}`.\n"
+                f"Expires on: `{expiration_time}`"
+            ),
+        )
+
+    except ValueError:
+        await msg.reply_text("❌ Invalid input. Please ensure user ID and time value are numbers.")
+    except Exception as e:
+        await msg.reply_text(f"⚠️ An error occurred: `{str(e)}`")
+
+
+# Command to remove premium user
+@Bot.on_message(filters.command('remove_premium') & filters.private & admin)
+async def pre_remove_user(client: Client, msg: Message):
+    if len(msg.command) != 2:
+        await msg.reply_text("useage: /remove_premium user_id ")
+        return
+    try:
+        user_id = int(msg.command[1])
+        await remove_premium(user_id)
+        await msg.reply_text(f"User {user_id} has been removed.")
+    except ValueError:
+        await msg.reply_text("user_id must be an integer or not available in database.")
+
+
+# Command to list active premium users
+@Bot.on_message(filters.command('premium_users') & filters.private & admin)
+async def list_premium_users_command(client, message):
+    # Define IST timezone
+    ist = timezone("Asia/Kolkata")
+
+    # Retrieve all users from the collection
+    premium_users_cursor = collection.find({})
+    premium_user_list = ['Active Premium Users in database:']
+    current_time = datetime.now(ist)  # Get current time in IST
+
+    # Use async for to iterate over the async cursor
+    async for user in premium_users_cursor:
+        user_id = user["user_id"]
+        expiration_timestamp = user["expiration_timestamp"]
+
+        try:
+            # Convert expiration_timestamp to a timezone-aware datetime object in IST
+            expiration_time = datetime.fromisoformat(expiration_timestamp).astimezone(ist)
+
+            # Calculate remaining time
+            remaining_time = expiration_time - current_time
+
+            if remaining_time.total_seconds() <= 0:
+                # Remove expired users from the database
+                await collection.delete_one({"user_id": user_id})
+                continue  # Skip to the next user if this one is expired
+
+            # If not expired, retrieve user info
+            user_info = await client.get_users(user_id)
+            username = user_info.username if user_info.username else "No Username"
+            first_name = user_info.first_name
+            mention=user_info.mention
+
+            # Calculate days, hours, minutes, seconds left
+            days, hours, minutes, seconds = (
+                remaining_time.days,
+                remaining_time.seconds // 3600,
+                (remaining_time.seconds // 60) % 60,
+                remaining_time.seconds % 60,
+            )
+            expiry_info = f"{days}d {hours}h {minutes}m {seconds}s left"
+
+            # Add user details to the list
+            premium_user_list.append(
+                f"UserID: <code>{user_id}</code>\n"
+                f"User: @{username}\n"
+                f"Name: {mention}\n"
+                f"Expiry: {expiry_info}"
+            )
+        except Exception as e:
+            premium_user_list.append(
+                f"UserID: <code>{user_id}</code>\n"
+                f"Error: Unable to fetch user details ({str(e)})"
+            )
+
+    if len(premium_user_list) == 1:  # No active users found
+        await message.reply_text("I found 0 active premium users in my DB")
+    else:
+        await message.reply_text("\n\n".join(premium_user_list), parse_mode=None)
+
+
+#=====================================================================================##
+
+@Bot.on_message(filters.command("count") & filters.private & admin)
+async def total_verify_count_cmd(client, message: Message):
+    total = await db.get_total_verify_count()
+    await message.reply_text(f"Tᴏᴛᴀʟ ᴠᴇʀɪғɪᴇᴅ ᴛᴏᴋᴇɴs ᴛᴏᴅᴀʏ: <b>{total}</b>")
+
 
 #=====================================================================================##
 
